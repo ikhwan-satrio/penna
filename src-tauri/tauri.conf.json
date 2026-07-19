@@ -37,7 +37,10 @@
     ],
     "linux": {
       "rpm": {
-        "compressionType": "xz"
+        "compression": {
+          "type": "gzip",
+          "level": 6
+        }
       }
     },
     "android": {
