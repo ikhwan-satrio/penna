@@ -100,70 +100,30 @@ jobs:
       - name: Fetch release asset hash & update version and hash in Nix files
         id: hash
         env:
-          ASSET_NAME: myapp-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz
+          ASSET_NAME: penna-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz
           TAG: ${{ steps.ver.outputs.tag }}
           VER: ${{ steps.ver.outputs.version }}
           REPO: ${{ github.repository }}
         run: |
-          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+          echo "Files in dist/:"
+          ls -la dist/
 
+          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+          echo "Fetching URL: $ASSET_URL"
+
+          RAW_HASH=""
           for i in 1 2 3 4 5; do
-            if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL" 2>/dev/null); then
+            if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL"); then
               break
             fi
+            echo "Retry $i failed, waiting 3s..."
             sleep 3
           done
 
-          if [ -z "${RAW_HASH:-}" ]; then
+          if [ -z "$RAW_HASH" ]; then
             echo "Gagal mengambil hash dari $ASSET_URL" >&2
             exit 1
           fi
-
-          SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
-          echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
-
-          python3 - <<'PY'
-          import os, re
-          from pathlib import Path
-
-          ver = os.environ["VER"]
-          tag = os.environ["TAG"]
-          sri = os.environ["SRI_HASH"]
-
-          # Masukkan semua file .nix yang menyimpan version/releaseHash (misal flake.nix & nix/package.nix)
-          target_files = [Path("flake.nix")]
-
-          for path in target_files:
-              if not path.exists():
-                  continue
-              content = path.read_text(encoding="utf-8")
-
-              # Update version = "x.y.z"; (tanpa leading 'v')
-              content, n_ver = re.subn(
-                  r'(\bversion\s*=\s*")[^"]*(";)',
-                  rf'\g<1>{ver}\g<2>',
-                  content,
-                  count=1,
-              )
-
-              # Update releaseHash = "sha256-...";
-              content, n_hash = re.subn(
-                  r'(\breleaseHash\s*=\s*")[^"]*(";)',
-                  rf'\g<1>{sri}\g<2>',
-                  content,
-                  count=1,
-              )
-
-              # Jika URL download memakai tag vX.Y.Z atau versi X.Y.Z secara literal, update juga
-              content = re.sub(
-                  r'(/releases/download/)v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?/',
-                  rf'\g<1>{tag}/',
-                  content,
-              )
-
-              path.write_text(content, encoding="utf-8")
-              print(f"{path}: updated version ({n_ver}) and releaseHash ({n_hash})")
-          PY
 
       - name: Verify nix flake check
         run: |
