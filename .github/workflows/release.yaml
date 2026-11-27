@@ -172,24 +172,27 @@ jobs:
           print(f"Updated version ({n_ver}) and releaseHash ({n_hash}) in flake.nix")
           PY
 
-      - name: Verify nix flake check
+      - name: Update flake.lock & verify flake
         run: |
           nix flake lock
           nix flake check --no-build
 
-      - name: Commit and push updated flake.nix & CHANGELOG.md
+      - name: Commit and push updated flake.nix, flake.lock & CHANGELOG.md
         run: |
           git config user.name "ikhwan-satrio"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add flake.nix CHANGELOG.md
+          DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+
+          git fetch origin "$DEFAULT_BRANCH"
+
+          git add flake.nix flake.lock CHANGELOG.md
           if git diff --staged --quiet; then
-            echo "Tidak ada perubahan pada flake.nix atau CHANGELOG.md"
+            echo "Tidak ada perubahan pada flake.nix, flake.lock, atau CHANGELOG.md"
             exit 0
           fi
 
           git commit -m "chore(flake): update version and release hash for ${{ steps.ver.outputs.tag }}"
-
-          DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
-          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          git rebase "origin/${DEFAULT_BRANCH}"
           git push origin "HEAD:${DEFAULT_BRANCH}"
