@@ -72,9 +72,10 @@ jobs:
       - name: Install Frontend Dependencies
         run: bun install
 
-      - name: Build Tauri App (Multi-Bundle)
-        run: |
-          bun run tauri build -- --bundles deb,appimage,rpm,nsis
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate changelog from git commits
         id: changelog
