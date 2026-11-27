@@ -1,0 +1,15 @@
+name: "penna"
+arch: "amd64"
+platform: "linux"
+version: "${VERSION}"
+section: "utils"
+priority: "optional"
+maintainer: "ikhwan-satrio <ikhwansatria3974@gmail.com>"
+description: "Penna CLI Tool"
+vendor: "ikhwan-satrio"
+homepage: "https://github.com/ikhwan-satrio/penna"
+license: "MIT"
+
+contents:
+  - src: ./src-tauri/target/release/penna
+    dst: /usr/bin/penna

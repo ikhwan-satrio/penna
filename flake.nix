@@ -1,5 +1,5 @@
 {
-  description = "penna built from GitHub Release";
+  description = "penna built from GitHub Release .deb";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -18,10 +18,12 @@
         pkgs = nixpkgs.legacyPackages.${system};
 
         version = "1.0.0";
+        debFileName = "penna-${version}-linux-x86_64.deb";
+
         releaseHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
         src = pkgs.fetchurl {
-          url = "https://github.com/ikhwan-satrio/penna/releases/download/v${version}/penna-${version}-linux-x86_64.tar.gz";
+          url = "https://github.com/ikhwan-satrio/penna/releases/download/v${version}/penna_${version}_amd64.deb";
           hash = releaseHash;
         };
       in
@@ -30,10 +32,21 @@
           pname = "penna";
           inherit version src;
 
+          nativeBuildInputs = [
+            pkgs.dpkg
+            pkgs.autoPatchelfHook
+          ];
+
           dontUnpack = true;
+
           installPhase = ''
-            mkdir -p $out/bin
-            tar -xzf $src -C $out/bin
+            dpkg -x $src $out
+
+            if [ -d "$out/usr" ]; then
+              mv $out/usr/* $out/
+              rmdir $out/usr 2>/dev/null || true
+            fi
+
             chmod +x $out/bin/penna
           '';
         };
