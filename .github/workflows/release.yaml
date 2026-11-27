@@ -1,0 +1,188 @@
+name: Build, Release, Changelog & Update Flake Hash
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (contoh: 0.2.0 atau v0.2.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-and-update-flake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version & tag
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            RAW="${{ inputs.version }}"
+            TAG="${RAW#v}"
+            TAG="v${TAG}"
+            VER="${TAG#v}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            VER="${TAG#v}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: Build release artifact
+        run: |
+          mkdir -p dist
+          # Ganti bagian ini dengan perintah build proyek kamu (Go, Rust, Node, binary, dll.)
+          # Contoh:
+          # cargo build --release
+          # tar -czf "dist/myapp-${{ steps.ver.outputs.tag }}-linux-x86_64.tar.gz" -C target/release myapp
+          echo "dummy-binary-${{ steps.ver.outputs.tag }}" > "dist/myapp-${{ steps.ver.outputs.tag }}-linux-x86_64.tar.gz"
+      
+      - name: Ensure release tag exists on workflow_dispatch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          TAG="${{ steps.ver.outputs.tag }}"
+          if ! git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "refs/tags/${TAG}"
+          fi
+
+      - name: Generate changelog from git commits
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "${{ steps.ver.outputs.tag }}^" 2>/dev/null || true)
+
+          {
+            echo "## Changelog (${{ steps.ver.outputs.tag }})"
+            echo ""
+            if [ -n "$PREV_TAG" ]; then
+              git log --no-merges --pretty=format:"- %s (%h)" "${PREV_TAG}..${{ steps.ver.outputs.tag }}"
+            else
+              git log --no-merges --pretty=format:"- %s (%h)" "${{ steps.ver.outputs.tag }}"
+            fi
+            echo ""
+          } > CHANGELOG_ENTRY.md
+
+          if [ -f CHANGELOG.md ]; then
+            {
+              cat CHANGELOG_ENTRY.md
+              echo ""
+              cat CHANGELOG.md
+            } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          else
+            cp CHANGELOG_ENTRY.md CHANGELOG.md
+          fi
+
+      - name: Create GitHub Release & upload artifact
+        id: release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          body_path: CHANGELOG_ENTRY.md
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Fetch release asset hash & update version and hash in Nix files
+        id: hash
+        env:
+          ASSET_NAME: myapp-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz
+          TAG: ${{ steps.ver.outputs.tag }}
+          VER: ${{ steps.ver.outputs.version }}
+          REPO: ${{ github.repository }}
+        run: |
+          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+
+          for i in 1 2 3 4 5; do
+            if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL" 2>/dev/null); then
+              break
+            fi
+            sleep 3
+          done
+
+          if [ -z "${RAW_HASH:-}" ]; then
+            echo "Gagal mengambil hash dari $ASSET_URL" >&2
+            exit 1
+          fi
+
+          SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
+          echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
+
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          ver = os.environ["VER"]
+          tag = os.environ["TAG"]
+          sri = os.environ["SRI_HASH"]
+
+          # Masukkan semua file .nix yang menyimpan version/releaseHash (misal flake.nix & nix/package.nix)
+          target_files = [Path("flake.nix")]
+
+          for path in target_files:
+              if not path.exists():
+                  continue
+              content = path.read_text(encoding="utf-8")
+
+              # Update version = "x.y.z"; (tanpa leading 'v')
+              content, n_ver = re.subn(
+                  r'(\bversion\s*=\s*")[^"]*(";)',
+                  rf'\g<1>{ver}\g<2>',
+                  content,
+                  count=1,
+              )
+
+              # Update releaseHash = "sha256-...";
+              content, n_hash = re.subn(
+                  r'(\breleaseHash\s*=\s*")[^"]*(";)',
+                  rf'\g<1>{sri}\g<2>',
+                  content,
+                  count=1,
+              )
+
+              # Jika URL download memakai tag vX.Y.Z atau versi X.Y.Z secara literal, update juga
+              content = re.sub(
+                  r'(/releases/download/)v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?/',
+                  rf'\g<1>{tag}/',
+                  content,
+              )
+
+              path.write_text(content, encoding="utf-8")
+              print(f"{path}: updated version ({n_ver}) and releaseHash ({n_hash})")
+          PY
+
+      - name: Verify nix flake check
+        run: |
+          nix flake check --no-build-output
+
+      - name: Commit and push updated flake.nix & CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add flake.nix CHANGELOG.md
+          if git diff --staged --quiet; then
+            echo "Tidak ada perubahan pada flake.nix atau CHANGELOG.md"
+            exit 0
+          fi
+
+          git commit -m "chore(flake): update version and release hash for ${{ steps.ver.outputs.tag }}"
+
+          # Push ke branch default (misalnya main)
+          DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
+          DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
