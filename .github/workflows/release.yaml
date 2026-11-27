@@ -48,11 +48,10 @@ jobs:
           fi
 
       # --- SETUP LINGKUNGAN BUILD ---
-      - name: Setup Node.js (untuk Nuxt/Vue frontend)
-        uses: actions/setup-node@v4
+      - name: Setup Bun (untuk Nuxt/Vue frontend)
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: '20'
-          cache: 'npm' # Ganti ke 'yarn' atau 'pnpm' jika kamu menggunakannya
+          bun-version: latest
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -74,11 +73,11 @@ jobs:
             desktop-file-utils
 
       - name: Install Frontend Dependencies
-        run: npm install
+        run: bun install
 
       - name: Build Tauri App (Multi-Bundle)
         run: |
-          npm run tauri build -- --bundles deb,appimage,rpm,nsis
+          bun run tauri build -- --bundles deb,appimage,rpm,nsis
 
       - name: Generate changelog from git commits
         id: changelog
