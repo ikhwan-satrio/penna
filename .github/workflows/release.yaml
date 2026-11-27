@@ -104,11 +104,31 @@ jobs:
       - name: Fetch release asset hash & update version and hash in flake.nix
         id: hash
         env:
-          ASSET_NAME: ${{ steps.build.outputs.asset_name }}
+          ASSET_NAME: penna-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz
           TAG: ${{ steps.ver.outputs.tag }}
           VER: ${{ steps.ver.outputs.version }}
           REPO: ikhwan-satrio/penna
         run: |
+          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
+          echo "Fetching URL: $ASSET_URL"
+
+          RAW_HASH=""
+          for i in 1 2 3 4 5; do
+            if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL"); then
+              RAW_HASH=$(printf '%s' "$RAW_HASH" | tail -n 1 | tr -d '[:space:]')
+              if [ -n "$RAW_HASH" ]; then
+                break
+              fi
+            fi
+            echo "Retry $i failed, waiting 3s..."
+            sleep 3
+          done
+
+          if [ -z "$RAW_HASH" ]; then
+            echo "Gagal mengambil RAW_HASH dari $ASSET_URL" >&2
+            exit 1
+          fi
+
           SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
           export SRI_HASH
           echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
@@ -127,21 +147,21 @@ jobs:
 
           content, n_ver = re.subn(
               r'(\bversion\s*=\s*")[^"]*(";)',
-              rf'\g<1>{ver}\g<2>',
+              lambda m: f"{m.group(1)}{ver}{m.group(2)}",
               content,
               count=1,
           )
 
           content, n_hash = re.subn(
               r'(\breleaseHash\s*=\s*")[^"]*(";)',
-              rf'\g<1>{sri}\g<2>',
+              lambda m: f"{m.group(1)}{sri}{m.group(2)}",
               content,
               count=1,
           )
 
           content = re.sub(
               r'(https://github\.com/ikhwan-satrio/penna/releases/download/)v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?/',
-              rf'\g<1>{tag}/',
+              lambda m: f"{m.group(1)}{tag}/",
               content,
           )
 
