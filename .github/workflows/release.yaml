@@ -109,24 +109,7 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
           REPO: ikhwan-satrio/penna
         run: |
-          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
-          echo "Fetching URL: $ASSET_URL"
-
-          RAW_HASH=""
-          for i in 1 2 3 4 5; do
-            if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL"); then
-              break
-            fi
-            echo "Retry $i failed, waiting 3s..."
-            sleep 3
-          done
-
-          if [ -z "$RAW_HASH" ]; then
-            echo "Gagal mengambil hash dari $ASSET_URL" >&2
-            exit 1
-          fi
-
-          SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
+          export SRI_HASH
           echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
           echo "New SRI Hash: $SRI_HASH"
 
