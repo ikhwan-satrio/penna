@@ -17,7 +17,7 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        version = "1.0.0";
+        version = "1.4.0";
         debFileName = "penna-${version}-linux-x86_64.deb";
 
         releaseHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -35,6 +35,19 @@
           nativeBuildInputs = [
             pkgs.dpkg
             pkgs.autoPatchelfHook
+            pkgs.wrapGAppsHook3
+          ];
+
+          buildInputs = [
+            pkgs.cairo
+            pkgs.dbus
+            pkgs.gdk-pixbuf
+            pkgs.glib
+            pkgs.glib-networking
+            pkgs.gtk3
+            pkgs.libsoup_3
+            pkgs.webkitgtk_4_1
+            (pkgs.lib.getLib pkgs.stdenv.cc.cc)
           ];
 
           dontUnpack = true;
