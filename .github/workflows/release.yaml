@@ -109,6 +109,7 @@ jobs:
           VER: ${{ steps.ver.outputs.version }}
           REPO: ikhwan-satrio/penna
         run: |
+          SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
           export SRI_HASH
           echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
           echo "New SRI Hash: $SRI_HASH"
