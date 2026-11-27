@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (contoh: 0.2.0 atau v0.2.0)"
+        description: "Release version (contoh: 1.0.0 atau v1.0.0)"
         required: true
         type: string
 
@@ -39,15 +39,6 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
-      - name: Build release artifact
-        run: |
-          mkdir -p dist
-          # Ganti bagian ini dengan perintah build proyek kamu (Go, Rust, Node, binary, dll.)
-          # Contoh:
-          # cargo build --release
-          # tar -czf "dist/myapp-${{ steps.ver.outputs.tag }}-linux-x86_64.tar.gz" -C target/release myapp
-          echo "dummy-binary-${{ steps.ver.outputs.tag }}" > "dist/myapp-${{ steps.ver.outputs.tag }}-linux-x86_64.tar.gz"
-      
       - name: Ensure release tag exists on workflow_dispatch
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -56,6 +47,19 @@ jobs:
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "refs/tags/${TAG}"
           fi
+
+      - name: Build release artifact
+        id: build
+        env:
+          VER: ${{ steps.ver.outputs.version }}
+        run: |
+          mkdir -p dist
+          ASSET_NAME="penna-${VER}-linux-x86_64.tar.gz"
+          # Ganti bagian ini dengan perintah build binary penna yang sebenarnya
+          # Contoh:
+          # tar -czf "dist/${ASSET_NAME}" -C target/release penna
+          echo "dummy-binary-penna-${VER}" > "dist/${ASSET_NAME}"
+          echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog from git commits
         id: changelog
@@ -97,17 +101,14 @@ jobs:
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
 
-      - name: Fetch release asset hash & update version and hash in Nix files
+      - name: Fetch release asset hash & update version and hash in flake.nix
         id: hash
         env:
-          ASSET_NAME: penna-${{ steps.ver.outputs.version }}-linux-x86_64.tar.gz
+          ASSET_NAME: ${{ steps.build.outputs.asset_name }}
           TAG: ${{ steps.ver.outputs.tag }}
           VER: ${{ steps.ver.outputs.version }}
-          REPO: ${{ github.repository }}
+          REPO: ikhwan-satrio/penna
         run: |
-          echo "Files in dist/:"
-          ls -la dist/
-
           ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
           echo "Fetching URL: $ASSET_URL"
 
@@ -125,13 +126,55 @@ jobs:
             exit 1
           fi
 
+          SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
+          echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
+          echo "New SRI Hash: $SRI_HASH"
+
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+
+          ver = os.environ["VER"]
+          tag = os.environ["TAG"]
+          sri = os.environ["SRI_HASH"]
+
+          flake_path = Path("flake.nix")
+          content = flake_path.read_text(encoding="utf-8")
+
+          content, n_ver = re.subn(
+              r'(\bversion\s*=\s*")[^"]*(";)',
+              rf'\g<1>{ver}\g<2>',
+              content,
+              count=1,
+          )
+
+          content, n_hash = re.subn(
+              r'(\breleaseHash\s*=\s*")[^"]*(";)',
+              rf'\g<1>{sri}\g<2>',
+              content,
+              count=1,
+          )
+
+          content = re.sub(
+              r'(https://github\.com/ikhwan-satrio/penna/releases/download/)v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?/',
+              rf'\g<1>{tag}/',
+              content,
+          )
+
+          if n_hash == 0:
+              raise RuntimeError("Tidak menemukan 'releaseHash = \"...\";' di flake.nix")
+
+          flake_path.write_text(content, encoding="utf-8")
+          print(f"Updated version ({n_ver}) and releaseHash ({n_hash}) in flake.nix")
+          PY
+
       - name: Verify nix flake check
         run: |
           nix flake check --no-build-output
 
       - name: Commit and push updated flake.nix & CHANGELOG.md
         run: |
-          git config user.name "github-actions[bot]"
+          git config user.name "ikhwan-satrio"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           git add flake.nix CHANGELOG.md
@@ -142,7 +185,6 @@ jobs:
 
           git commit -m "chore(flake): update version and release hash for ${{ steps.ver.outputs.tag }}"
 
-          # Push ke branch default (misalnya main)
           DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
           DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
           git push origin "HEAD:${DEFAULT_BRANCH}"

@@ -1,5 +1,5 @@
 {
-  description = "Penna app";
+  description = "penna built from GitHub Release";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -21,20 +21,20 @@
         releaseHash = "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
         src = pkgs.fetchurl {
-          url = "https://github.com/ikhwan-satrio/placeholder/releases/download/v${version}/penna-v${version}-linux-x86_64.tar.gz";
+          url = "https://github.com/ikhwan-satrio/penna/releases/download/v${version}/penna-${version}-linux-x86_64.tar.gz";
           hash = releaseHash;
         };
       in
       {
         packages.default = pkgs.stdenv.mkDerivation {
-          pname = "myapp";
+          pname = "penna";
           inherit version src;
 
           dontUnpack = true;
           installPhase = ''
             mkdir -p $out/bin
             tar -xzf $src -C $out/bin
-            chmod +x $out/bin/myapp
+            chmod +x $out/bin/penna
           '';
         };
       }
