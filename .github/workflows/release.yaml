@@ -174,7 +174,7 @@ jobs:
 
       - name: Verify nix flake check
         run: |
-          nix flake check --no-buid
+          nix flake check --no-build
 
       - name: Commit and push updated flake.nix & CHANGELOG.md
         run: |
