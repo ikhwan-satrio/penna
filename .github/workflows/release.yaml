@@ -17,6 +17,7 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,30 +26,36 @@ jobs:
 
       - name: Determine version & tag
         id: ver
+        shell: bash
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             RAW="${{ inputs.version }}"
-            TAG="${RAW#v}"
-            TAG="v${TAG}"
-            VER="${TAG#v}"
+            RAW="${RAW#v}"
+            TAG="v${RAW}"
+            VER="${RAW}"
           else
             TAG="${GITHUB_REF_NAME}"
             VER="${TAG#v}"
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
 
       - name: Ensure release tag exists on workflow_dispatch
         if: github.event_name == 'workflow_dispatch'
+        shell: bash
         run: |
+          set -euo pipefail
           TAG="${{ steps.ver.outputs.tag }}"
+
           if ! git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null; then
             git tag -a "${TAG}" -m "Release ${TAG}"
             git push origin "refs/tags/${TAG}"
           fi
 
-      # --- SETUP LINGKUNGAN BUILD ---
-      - name: Setup Bun (untuk Nuxt/Vue frontend)
+      - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
@@ -56,7 +63,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install dependencies (Linux)
+      - name: Install Linux dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -65,7 +72,7 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Install Frontend Dependencies
+      - name: Install frontend dependencies
         run: bun install
 
       - name: Build Tauri app
@@ -75,26 +82,34 @@ jobs:
 
       - name: Generate changelog from git commits
         id: changelog
+        shell: bash
         run: |
-          PREV_TAG=$(git describe --tags --abbrev=0 "${{ steps.ver.outputs.tag }}^" 2>/dev/null || true)
+          set -euo pipefail
+
+          TAG="${{ steps.ver.outputs.tag }}"
+          PREV_TAG=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || true)
+
           {
-            echo "## Changelog (${{ steps.ver.outputs.tag }})"
+            echo "## Changelog (${TAG})"
             echo ""
-            if [ -n "$PREV_TAG" ]; then
-              git log --no-merges --pretty=format:"- %s (%h)" "${PREV_TAG}..${{ steps.ver.outputs.tag }}"
+
+            if [[ -n "$PREV_TAG" ]]; then
+              git log --no-merges --pretty=format:"- %s (%h)" "${PREV_TAG}..${TAG}"
             else
-              git log --no-merges --pretty=format:"- %s (%h)" "${{ steps.ver.outputs.tag }}"
+              git log --no-merges --pretty=format:"- %s (%h)" "${TAG}"
             fi
+
             echo ""
           } > CHANGELOG_ENTRY.md
 
-          if [ -f CHANGELOG.md ]; then
-            cat CHANGELOG_ENTRY.md CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+          if [[ -f CHANGELOG.md ]]; then
+            cat CHANGELOG_ENTRY.md CHANGELOG.md > CHANGELOG.tmp
+            mv CHANGELOG.tmp CHANGELOG.md
           else
             cp CHANGELOG_ENTRY.md CHANGELOG.md
           fi
 
-      - name: Create GitHub Release & upload all Tauri artifacts
+      - name: Create GitHub Release and upload Tauri artifacts
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.ver.outputs.tag }}
@@ -109,55 +124,80 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- UPDATE FLAKE.NIX ---
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@main
 
-      - name: Fetch .deb hash & update flake.nix
+      - name: Fetch Debian asset hash and update flake.nix
         id: hash
+        shell: bash
         env:
-          # Format nama file .deb bawaan Tauri: {productName}_{version}_{arch}.deb
-          ASSET_NAME: penna_${{ steps.ver.outputs.version }}_amd64.deb
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.ver.outputs.tag }}
           VER: ${{ steps.ver.outputs.version }}
           REPO: ikhwan-satrio/penna
         run: |
+          set -euo pipefail
+
+          ASSET_NAME=$(
+            gh release view "$TAG" \
+              --repo "$REPO" \
+              --json assets \
+              --jq '.assets[].name | select(test("\\.deb$"))' \
+              | head -n 1
+          )
+
+          if [[ -z "$ASSET_NAME" ]]; then
+            echo "No Debian asset found on release ${TAG}" >&2
+            exit 1
+          fi
+
+          echo "Using Debian asset: ${ASSET_NAME}"
+
           ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET_NAME}"
-          echo "Fetching URL: $ASSET_URL"
+          echo "Fetching: ${ASSET_URL}"
 
           RAW_HASH=""
           for i in 1 2 3 4 5; do
             if RAW_HASH=$(nix-prefetch-url --type sha256 "$ASSET_URL"); then
               RAW_HASH=$(printf '%s' "$RAW_HASH" | tail -n 1 | tr -d '[:space:]')
-              if [ -n "$RAW_HASH" ]; then
+
+              if [[ -n "$RAW_HASH" ]]; then
                 break
               fi
             fi
-            echo "Retry $i failed, waiting 3s..."
+
+            echo "Retry ${i} failed, waiting 3 seconds..."
             sleep 3
           done
 
-          if [ -z "$RAW_HASH" ]; then
-            echo "Gagal mengambil RAW_HASH dari $ASSET_URL" >&2
+          if [[ -z "$RAW_HASH" ]]; then
+            echo "Unable to fetch hash from ${ASSET_URL}" >&2
             exit 1
           fi
 
           SRI_HASH=$(nix hash convert --hash-algo sha256 --to sri "$RAW_HASH")
+
+          echo "sri_hash=${SRI_HASH}" >> "$GITHUB_OUTPUT"
+          echo "New SRI Hash: ${SRI_HASH}"
+
+          export ASSET_NAME
           export SRI_HASH
-          echo "sri_hash=$SRI_HASH" >> "$GITHUB_OUTPUT"
-          echo "New SRI Hash: $SRI_HASH"
+          export VER
+          export TAG
 
           python3 - <<'PY'
-          import os, re
+          import os
+          import re
           from pathlib import Path
 
           ver = os.environ["VER"]
           sri = os.environ["SRI_HASH"]
+          tag = os.environ["TAG"]
+          asset_name = os.environ["ASSET_NAME"]
 
           flake_path = Path("flake.nix")
           content = flake_path.read_text(encoding="utf-8")
 
-          # Update version
           content, n_ver = re.subn(
               r'(\bversion\s*=\s*")[^"]*(";)',
               lambda m: f"{m.group(1)}{ver}{m.group(2)}",
@@ -165,7 +205,6 @@ jobs:
               count=1,
           )
 
-          # Update releaseHash
           content, n_hash = re.subn(
               r'(\breleaseHash\s*=\s*")[^"]*(";)',
               lambda m: f"{m.group(1)}{sri}{m.group(2)}",
@@ -173,38 +212,41 @@ jobs:
               count=1,
           )
 
-          # Update URL untuk menunjuk ke format nama file .deb bawaan Tauri
+          if n_hash == 0:
+              raise RuntimeError("Could not find 'releaseHash = \"...\";' in flake.nix")
+
           content = re.sub(
-              r'(https://github\.com/ikhwan-satrio/penna/releases/download/)v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?/[^/]+\.deb',
-              lambda m: f"{m.group(1)}{os.environ['TAG']}/penna_{os.environ['VER']}_amd64.deb",
+              r'https://github\.com/ikhwan-satrio/penna/releases/download/'
+              r'[^/]+/[^/\s]+\.deb',
+              f"https://github.com/ikhwan-satrio/penna/releases/download/{tag}/{asset_name}",
               content,
           )
 
-          if n_hash == 0:
-              raise RuntimeError("Tidak menemukan 'releaseHash = \"...\";' di flake.nix")
-
           flake_path.write_text(content, encoding="utf-8")
-          print(f"Updated version ({n_ver}) and releaseHash ({n_hash}) in flake.nix")
+          print(f"Updated version ({n_ver}), releaseHash ({n_hash}), and Debian URL")
           PY
 
-      - name: Update flake.lock & verify flake
+      - name: Update flake.lock and verify flake
         run: |
           nix flake lock
           nix flake check --no-build
 
-      - name: Commit and push updated flake.nix, flake.lock & CHANGELOG.md
+      - name: Commit and push updated files
+        shell: bash
         run: |
-          git config user.name "ikhwan-satrio"
-          git config user.email "ikhwansatria3974@gmail.com"
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           DEFAULT_BRANCH=$(git remote show origin | sed -n '/HEAD branch/s/.*: //p')
           DEFAULT_BRANCH="${DEFAULT_BRANCH:-main}"
 
-          git fetch origin "$DEFAULT_BRANCH"
+          git fetch origin "${DEFAULT_BRANCH}"
           git add flake.nix flake.lock CHANGELOG.md
-          
+
           if git diff --staged --quiet; then
-            echo "Tidak ada perubahan pada flake.nix, flake.lock, atau CHANGELOG.md"
+            echo "No changes to flake.nix, flake.lock, or CHANGELOG.md"
             exit 0
           fi
 
