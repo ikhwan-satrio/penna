@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "identifier": "com.ikhwan-satrio.penna",
   "build": {
-    "frontendDist": "../.output",
+    "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",
     "beforeDevCommand": "bun dev",
     "beforeBuildCommand": "bun run build"

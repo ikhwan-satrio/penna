@@ -6,6 +6,7 @@ export default defineNuxtConfig({
   modules: ['@nuxt/fonts', '@nuxtjs/color-mode', 'shadcn-nuxt', '@nuxtjs/mdc', '@pinia/nuxt'],
   compatibilityDate: '2025-07-15',
   ssr: false,
+  nitro: { preset: 'static' },
   devtools: { enabled: true },
   vite: {
     plugins: [tailwindcss()]
