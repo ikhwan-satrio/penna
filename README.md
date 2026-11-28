@@ -1,75 +1,143 @@
-# Nuxt Minimal Starter
+# Penna
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+**Penna** is a fast, lightweight Markdown note-taking desktop application built with **Tauri** and a modern web frontend for a distraction-free, responsive writing workflow.
 
-## Setup
+![License](https://img.shields.io/github/license/ikhwan-satrio/penna?style=flat-square)
+![Release](https://img.shields.io/github/v/release/ikhwan-satrio/penna?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Linux-blue?style=flat-square)
 
-Make sure to install dependencies:
+---
+
+## ✨ Key Features
+
+* **Multi-Tab Editor:** Open and manage multiple Markdown documents side by side like a modern code editor.
+* **Live Markdown Preview:** Inspect rendered Markdown formatting in real time as you write.
+* **Lightweight Footprint:** Powered by a Rust backend via **Tauri**, offering smaller binaries and lower memory usage than Electron-based alternatives.
+* **Fast Keyboard Shortcuts:** Save documents (`Ctrl+S`), switch tabs, and navigate files smoothly from the keyboard.
+* **Unsaved Changes Protection:** Prompts for confirmation before closing tabs with unsaved edits.
+
+---
+
+## 🚀 Installation & Usage
+
+### 1. Nix Flake (Recommended for NixOS / Nix)
+
+Run directly without installing permanently:
 
 ```bash
-# npm
-npm install
+nix run github:ikhwan-satrio/penna
 
-# pnpm
-pnpm install
+```
 
-# yarn
-yarn install
+Force Nix to refresh its flake evaluation cache before running:
 
-# bun
+```bash
+nix run --refresh github:ikhwan-satrio/penna
+
+```
+
+Or add it as an input in your system or Home Manager `flake.nix`:
+
+```nix
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    penna.url = "github:ikhwan-satrio/penna";
+  };
+
+  outputs = { self, nixpkgs, penna, ... }: {
+    # Add penna.packages.${system}.default to your packages list
+  };
+}
+
+```
+
+### 2. Linux Release Packages (`.deb` / `.AppImage`)
+
+Download the latest release bundles from the [GitHub Releases](https://github.com/ikhwan-satrio/penna/releases) page:
+
+* **Debian / Ubuntu:**
+```bash
+sudo dpkg -i penna_*_amd64.deb
+sudo apt-get install -f
+
+```
+
+
+* **AppImage (Other Linux Distributions):**
+```bash
+chmod +x penna_*_amd64.AppImage
+./penna_*_amd64.AppImage
+
+```
+
+
+
+---
+
+## 🛠️ Local Development
+
+### Prerequisites
+
+* [Bun](https://bun.sh/)
+* [Rust & Cargo](https://www.rust-lang.org/tools/install)
+* Tauri system dependencies (on Debian/Ubuntu):
+```bash
+sudo apt-get update && sudo apt-get install -y \
+  libgtk-3-dev \
+  libwebkit2gtk-4.1-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev
+
+```
+
+
+
+### Run in Development Mode
+
+1. **Clone the repository:**
+```bash
+git clone [https://github.com/ikhwan-satrio/penna.git](https://github.com/ikhwan-satrio/penna.git)
+cd penna
+
+```
+
+
+2. **Install frontend dependencies:**
+```bash
 bun install
+
 ```
 
-## Development Server
 
-Start the development server on `http://localhost:3000`:
+3. **Start the Tauri app:**
+```bash
+bun run tauri dev
+
+```
+
+
+
+### Build for Production
 
 ```bash
-# npm
-npm run dev
+bun run tauri build
 
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+Generated bundles are placed under `src-tauri/target/release/bundle/`.
 
-Build the application for production:
+---
 
-```bash
-# npm
-npm run build
+## 📦 Releases & CI/CD
 
-# pnpm
-pnpm build
+GitHub Actions automates releases and flake updates:
 
-# yarn
-yarn build
+1. Push a version tag (e.g., `git tag v1.4.1 && git push origin v1.4.1`) or trigger the release workflow manually via `workflow_dispatch`.
+2. The pipeline syncs versions across Tauri configuration files, builds release bundles, publishes the GitHub Release with generated commit notes, and updates the SHA-256 hash and version metadata in `flake.nix`.
 
-# bun
-bun run build
-```
+---
 
-Locally preview production build:
+## 📄 License
 
-```bash
-# npm
-npm run preview
-
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
-```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.
+This project is licensed under the terms specified in the [LICENSE](https://www.google.com/search?q=./LICENSE) file.
