@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version 1.4.0"
+        description: "Release version (contoh: 1.4.0)"
         required: true
         type: string
 
@@ -247,7 +247,7 @@ jobs:
           cp /tmp/flake.nix flake.nix
           cp /tmp/flake.lock flake.lock
 
-          git add flake.nix flake.lock
+          git add -f flake.nix flake.lock
 
           if git diff --staged --quiet; then
             echo "No changes to flake.nix or flake.lock"
