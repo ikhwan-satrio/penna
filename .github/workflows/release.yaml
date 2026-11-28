@@ -241,6 +241,9 @@ jobs:
           cp flake.nix /tmp/flake.nix
           cp flake.lock /tmp/flake.lock
 
+          git reset --hard HEAD
+          git clean -fd
+
           git fetch origin "${DEFAULT_BRANCH}"
           git checkout -B "${DEFAULT_BRANCH}" "origin/${DEFAULT_BRANCH}"
 
