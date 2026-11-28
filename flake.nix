@@ -20,7 +20,7 @@
         version = "1.4.0";
         debFileName = "penna-${version}-linux-x86_64.deb";
 
-        releaseHash = "sha256-yKTY+/dqoP4wTmfTrqwMxgI+M1AICorrE7l0tuMfsTQ=";
+        releaseHash = "sha256-sWBnI+LZd1MwEaUH6AjNpNvMiCNGIuG3EyarZH1Og5E=";
 
         src = pkgs.fetchurl {
           url = "https://github.com/ikhwan-satrio/penna/releases/download/v1.4.0/penna_1.4.0_amd64.deb";
